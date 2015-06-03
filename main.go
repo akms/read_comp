@@ -77,6 +77,7 @@ func readFile(args []string) {
 		log.Fatal(err)
 	}
 	defer fileReader.Close()
+	
 	tr := tar.NewReader(fileReader)
 	for {
 		hdr, err = tr.Next()
@@ -87,9 +88,9 @@ func readFile(args []string) {
 			log.Fatal("Can't read hdr \n")
 			break
 		}
-		fileinfo = hdr.FileInfo()
 		if default_Regexp.MatchString(hdr.Name) {
 			fmt.Println(hdr.Name)
+			fileinfo = hdr.FileInfo()
 			func() {
 				mkdir_name, _ := filepath.Split(hdr.Name)
 				changeDir(dd)
