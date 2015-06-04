@@ -37,7 +37,7 @@ OPTIONS:
 		}
 
 		i := c.Args()
-		tarreader.Readfile(i)
+		tarreader.Readarchive(i)
 	}
 	app.Run(os.Args)
 }

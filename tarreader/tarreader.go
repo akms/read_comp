@@ -10,27 +10,32 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
+	"time"
 )
 
 var (
 	reader chan *tar.Reader = make(chan *tar.Reader)
 	header chan *tar.Header = make(chan *tar.Header)
-	body        []byte
-	fileinfo    os.FileInfo
 )
 
-func unCompress() {
-	tr := <-reader
-	hdr := <-header
-	fileinfo = hdr.FileInfo()
+func Uncompress() {
+	var (
+		chdr     *tar.Header
+		ctr      *tar.Reader
+		fileinfo os.FileInfo
+		body     []byte
+	)
+	chdr = <-header
+	fileinfo = chdr.FileInfo()
+	mkdir_name, _ := filepath.Split(chdr.Name)
+	if err := os.MkdirAll(mkdir_name, fileinfo.Mode()); err != nil {
+		log.Fatal(err)
+	}
+	ctr = <-reader
 	func() {
-		mkdir_name, _ := filepath.Split(hdr.Name)
-
-		if err := os.MkdirAll(mkdir_name, fileinfo.Mode()); err != nil {
-			log.Fatal(err)
-		}
-		if hdr.Typeflag == '0' {
-			wfile, werr := os.Create(hdr.Name)
+		if chdr.Typeflag == '0' {
+			wfile, werr := os.Create(chdr.Name)
 			if werr != nil {
 				log.Fatal(werr)
 			}
@@ -38,7 +43,7 @@ func unCompress() {
 
 			body = make([]byte, 8192)
 			for {
-				c, rerr := tr.Read(body)
+				c, rerr := ctr.Read(body)
 				if c == 0 {
 					break
 				}
@@ -51,7 +56,35 @@ func unCompress() {
 	}()
 }
 
-func Readfile(args []string) {
+func readFile(tr *tar.Reader, dd string, dir_name string, default_Regexp *regexp.Regexp) {
+	var (
+		hdr *tar.Header
+		err error
+	)
+	for {
+		go Uncompress()
+		hdr, err = tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			log.Fatal("Can't read hdr \n ", err)
+			break
+		}
+		if default_Regexp.MatchString(hdr.Name) {
+			changeDir(dd)
+			fmt.Println(hdr.Name)
+			header <- hdr
+			reader <- tr
+			changeDir(dir_name)
+			time.Sleep(time.Second / 4)
+		}
+	}
+	close(header)
+	close(reader)
+}
+
+func Readarchive(args []string) {
 	var (
 		buf         bytes.Buffer
 		fileReader  io.ReadCloser
@@ -59,11 +92,12 @@ func Readfile(args []string) {
 		file_name   string
 		target_name string
 		err         error
-		hdr         *tar.Header
 		dir_name    string
 		tr          *tar.Reader
 	)
-	go unCompress()
+	cpus := runtime.NumCPU()
+	fmt.Println(cpus)
+	runtime.GOMAXPROCS(cpus)
 	dd, _ := os.Getwd()
 	dir_name, file_name = filepath.Split(args[0])
 	changeDir(dir_name)
@@ -82,23 +116,7 @@ func Readfile(args []string) {
 	defer fileReader.Close()
 
 	tr = tar.NewReader(fileReader)
-	for {
-		hdr, err = tr.Next()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			log.Fatal("Can't read hdr \n")
-			break
-		}
-		if default_Regexp.MatchString(hdr.Name) {
-			changeDir(dd)
-			fmt.Println(hdr.Name)
-			reader <- tr
-			header <- hdr
-			changeDir(dir_name)
-		}
-	}
+	readFile(tr, dd, dir_name, default_Regexp)
 }
 
 func changeDir(dir_name string) {
