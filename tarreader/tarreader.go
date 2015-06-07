@@ -26,34 +26,38 @@ func Uncompress() {
 		fileinfo os.FileInfo
 		body     []byte
 	)
-	chdr = <-header
-	fileinfo = chdr.FileInfo()
-	mkdir_name, _ := filepath.Split(chdr.Name)
-	if err := os.MkdirAll(mkdir_name, fileinfo.Mode()); err != nil {
-		log.Fatal(err)
-	}
-	ctr = <-reader
-	func() {
-		if chdr.Typeflag == '0' {
-			wfile, werr := os.Create(chdr.Name)
-			if werr != nil {
-				log.Fatal(werr)
+	for {
+		select {
+		case chdr = <-header:
+			fileinfo = chdr.FileInfo()
+			mkdir_name, _ := filepath.Split(chdr.Name)
+			if err := os.MkdirAll(mkdir_name, fileinfo.Mode()); err != nil {
+				log.Fatal(err)
 			}
-			defer wfile.Close()
+		case ctr = <-reader:
+			func() {
+				if chdr.Typeflag == '0' {
+					wfile, werr := os.Create(chdr.Name)
+					if werr != nil {
+						log.Fatal(werr)
+					}
+					defer wfile.Close()
 
-			body = make([]byte, 8192)
-			for {
-				c, rerr := ctr.Read(body)
-				if c == 0 {
-					break
+					body = make([]byte, 8192)
+					for {
+						c, rerr := ctr.Read(body)
+						if c == 0 {
+							break
+						}
+						if rerr != nil {
+							log.Fatal(rerr)
+						}
+						wfile.Write(body[:c])
+					}
 				}
-				if rerr != nil {
-					log.Fatal(rerr)
-				}
-				wfile.Write(body[:c])
-			}
+			}()
 		}
-	}()
+	}
 }
 
 func readFile(tr *tar.Reader, dd string, dir_name string, default_Regexp *regexp.Regexp) {
@@ -62,7 +66,6 @@ func readFile(tr *tar.Reader, dd string, dir_name string, default_Regexp *regexp
 		err error
 	)
 	for {
-		go Uncompress()
 		hdr, err = tr.Next()
 		if err == io.EOF {
 			break
@@ -77,7 +80,7 @@ func readFile(tr *tar.Reader, dd string, dir_name string, default_Regexp *regexp
 			header <- hdr
 			reader <- tr
 			changeDir(dir_name)
-			time.Sleep(time.Second / 4)
+			time.Sleep(time.Second / 8)
 		}
 	}
 	close(header)
@@ -95,6 +98,7 @@ func Readarchive(args []string) {
 		dir_name    string
 		tr          *tar.Reader
 	)
+	go Uncompress()
 	cpus := runtime.NumCPU()
 	fmt.Println(cpus)
 	runtime.GOMAXPROCS(cpus)
