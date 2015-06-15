@@ -42,8 +42,7 @@ func Uncompress() {
 						log.Fatal(werr)
 					}
 					defer wfile.Close()
-
-					body = make([]byte, 8192)
+					body = make([]byte, 512)
 					for {
 						c, rerr := ctr.Read(body)
 						if c == 0 {
@@ -89,7 +88,8 @@ func readFile(tr *tar.Reader, dd string, dir_name string, default_Regexp *regexp
 
 func Readarchive(args []string) {
 	var (
-		buf         bytes.Buffer
+		rbuf        bytes.Buffer
+		rbody       []byte
 		fileReader  io.ReadCloser
 		file        *os.File
 		file_name   string
@@ -112,9 +112,18 @@ func Readarchive(args []string) {
 		log.Fatal("Can'ft open file \n")
 	}
 	defer file.Close()
-
-	_, err = io.Copy(&buf, file)
-	if fileReader, err = gzip.NewReader(&buf); err != nil {
+	rbody = make([]byte, 512)
+	for {
+		cr, err := file.Read(rbody)
+		if cr == 0 {
+			break
+		}
+		if err != nil {
+			log.Fatal(err)
+		}
+		rbuf.Write(rbody[:cr])
+	}
+	if fileReader, err = gzip.NewReader(&rbuf); err != nil {
 		log.Fatal(err)
 	}
 	defer fileReader.Close()
